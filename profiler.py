@@ -8,7 +8,7 @@ OPT_MOD = ""
 
 # don't modify the clean list nor the command strings here
 CLEAN_LIST = ("geometry.mod", "fields.mod", "h2d_io.mod", "h2d_serial.trace", EXENAME)
-COMPILE_STR = ("gfortran", "-O2", "-g", "-pg", "-Wall", "-Wextra", "-Werror", "-fdefault-integer-8", 
+COMPILE_STR = ("gfortran", "-O2", "-g", "-pg", "-Wall", "-Wextra", "-Werror",  
 "-fdefault-real-8", "-fdefault-double-8",\
 "geometry.f90", "fields.f90", "IO.f90", "main.f90", "-o", "{0} >/dev/null".format(EXENAME))
 VALGRIND_RUN = ("valgrind", "--D1=32768,8,64", "--quiet", "--tool=cachegrind", \
@@ -34,12 +34,12 @@ def estimate(optim=0, exe=EXENAME):
         sed_1 = r"sed 's/use fields/use fields_opt/g' "
         subprocess.run(sed_1 + "IO.f90 > IO_opt.f90" , shell=True)
         subprocess.run(sed_1 + "main.f90 > main_opt.f90" , shell=True)
-        cstr[10] = "geometry.f90"
-        cstr[11] = 'IO_opt.f90'
-        cstr[12] = "main_opt.f90"
-        cstr[13] = "fields_opt.o"
+        cstr[9] = "geometry.f90"
+        cstr[10] = 'IO_opt.f90'
+        cstr[11] = "main_opt.f90"
+        cstr[12] = "fields_opt.o"
     elif optim ==2:
-        cstr[11] = 'fields_init.f90'
+        cstr[10] = 'fields_init.f90'
     cstr = ' '.join(cstr)
 
     
