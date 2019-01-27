@@ -1,0 +1,190 @@
+#Download base image debian:testing
+FROM debian:testing
+
+ENV DEBIAN8VERSION=testing
+
+ENV PACKAGES="wget \
+  bash \
+  gcc \
+  g++ \
+  gdb \
+  make \
+  libc-dev \
+  apt-utils \
+  build-essential \
+  git \
+  openssh-server \
+  openssh-client \
+  tar \
+  libffi-dev \
+  file \
+  zlibc \
+  ctags \
+  nano \
+  bzip2 \
+  ca-certificates \
+  libglib2.0-0 \
+  libxext6 \
+  libsm6 \
+  libxrender1 \
+  mercurial \
+  subversion \
+  curl \
+  grep \
+  sed \
+  dpkg \
+  gfortran \
+  openmpi-bin \
+  openmpi-common \
+  libopenmpi-dev \
+  valgrind \
+  valgrind-mpi \
+  valgrind-dbg \
+  vim \
+  emacs \
+  "
+
+ENV CINTEL_PACKAGES="numpy  \
+  scipy  \
+  matplotlib  \
+  seaborn  \
+  pandas \
+"
+
+ENV CONDA_PACKAGES="simplejson  \
+  lxml  \
+  paramiko  \
+  openpyxl  \
+  h5py \
+  cython \
+"
+
+
+
+ENV UNUSED="python2-dbg \
+"
+
+# libffi -> simplejson
+# openssl -> paramiko
+# gfortran -> numpy
+# file -> fftw3 configure
+RUN apt-get -q update --fix-missing &&  apt-get install -y -q $PACKAGES \
+  && TINI_VERSION=`curl https://github.com/krallin/tini/releases/latest | grep -o "/v.*\"" | sed 's:^..\(.*\).$:\1:'`  \
+  && curl -L "https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini_${TINI_VERSION}.deb" > tini.deb  \
+  && dpkg -i tini.deb  \
+  && rm tini.deb  \
+  && apt-get clean \
+  && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh  \
+  && wget --quiet https://repo.continuum.io/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh  \
+  && /bin/bash ~/miniconda.sh -b -p /opt/conda \
+  && rm ~/miniconda.sh
+
+ENV PATH="/opt/conda/bin/:$PATH"
+ENV WORKDIR=/home/work
+COPY fix-permissions /usr/local/bin/fix-permissions
+  
+
+
+# Create pyuser user with UID=1000 and in the 'users' group
+# and make sure these dirs are writable by the `users` group.
+ENV CONDA_DIR=/opt/conda \
+    SHELL=/bin/bash \
+    NB_USER=pyuser \
+    NB_UID=1000 \
+    NB_GID=100 \
+    LC_ALL=C \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US.UTF-8
+
+
+
+# install optimized intel python with all packages
+RUN echo "install base python " \
+&& $CONDA_DIR/bin/conda config --system --add channels intel \
+&& $CONDA_DIR/bin/conda update --y  --prefix $CONDA_DIR conda \
+&& echo""
+
+#RUN echo ""\
+#&& pip install --upgrade pip \
+#&& echo""
+
+RUN echo ""\
+&& $CONDA_DIR/bin/conda install -c intel intelpython3_core=2018.0.3 \
+&& $CONDA_DIR/bin/conda install -c intel $CINTEL_PACKAGES \
+&& $CONDA_DIR/bin/conda install $CONDA_PACKAGES \
+&& $CONDA_DIR/bin/conda clean -tipsy \
+&& cd $HOME \
+&& echo "download fftw" \
+&& wget -q http://www.fftw.org/fftw-3.3.7.tar.gz \
+&& tar -xzf fftw-3.3.7.tar.gz \
+&& echo "download hdf5" \
+&& wget -q https://support.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.10.4.tar.bz2 \
+&& tar -xjf hdf5-1.10.4.tar.bz2 \
+&& echo""
+
+RUN echo ""\
+&& cd $HOME/fftw-3.3.7 \
+&& echo "configure and make fftw" \
+&& ./configure --enable-shared --enable-threads --enable-sse2 --enable-avx --enable-avx2 >/dev/null \
+&& make >/dev/null  \
+&& make install \
+&& ./configure --enable-shared --enable-threads --enable-sse2 --enable-avx --enable-avx2 --enable-float >/dev/null \
+&& make >/dev/null \
+&& make install \
+&& ./configure --enable-shared --enable-threads                                          --enable-long-double >/dev/null \
+&& make >/dev/null \
+&& make install \
+&& echo ""
+
+ENV LDFLAGS="-L/usr/local/lib" 
+ENV CFLAGS="-I/usr/local/include" 
+ENV LD_LIBRARY_PATH="/usr/local/lib/:$LD_LIBRARY_PATH"
+ENV DYLD_LIBRARY_PATH="/usr/local/lib/:$DYLD_LIBRARY_PATH"
+RUN echo "" \
+&& cd $HOME \
+&& git clone --recursive https://github.com/pyFFTW/pyFFTW \
+&& pip install ./pyFFTW \
+&& pip install mpi4py \
+&& echo ""
+
+ENV LDFLAGS="" 
+ENV CFLAGS="" 
+
+RUN echo "" \
+&& cd $HOME \
+&& echo "install hdf5 " \
+&& ls $HOME \
+&& cd $HOME/hdf5-1.10.4 \
+&& ls \
+&& echo "configure and make hdf5" \
+&& ./configure --prefix=/usr/local/ >/dev/null \
+&& make >/dev/null \
+&& make install \
+&& echo "Remove lib sources" \
+&& rm -rf $HOME/hdf5* \
+&& rm -rf /root/fftw3* \
+&& rm -rf /root/.cache/pip \
+&& /opt/conda/bin/conda clean -tipsy \
+&& find $CONDA_DIR/pkgs/ -maxdepth 1 -mindepth 1 -type d -not -path '*/\.*' -exec rm -rf {} \; \
+&& echo
+
+RUN useradd -m -s /bin/bash -N -u $NB_UID $NB_USER \
+  && chown $NB_USER:$NB_GID $CONDA_DIR \
+  && mkdir -p $WORKDIR \
+  && /usr/local/bin/fix-permissions /home/$NB_USER \
+  && /usr/local/bin/fix-permissions $WORKDIR \
+  && /usr/local/bin/fix-permissions $CONDA_DIR
+
+ENV HOME=/home/$NB_USER
+
+
+
+
+USER $NB_USER
+ENV DYLD_LIBRARY_PATH="/usr/local/lib/:$DYLD_LIBRARY_PATH"
+EXPOSE 8888
+ENTRYPOINT [ "/usr/bin/tini", "--" ]
+CMD ["/bin/bash"]
+
+# Switch back to jovyan to avoid accidental container runs as root
+USER $NB_USER
