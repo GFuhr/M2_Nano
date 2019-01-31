@@ -8,11 +8,11 @@ OPT_MOD = ""
 
 # don't modify the clean list nor the command strings here
 CLEAN_LIST = ("geometry.mod", "fields.mod", "h2d_io.mod", "h2d_serial.trace", EXENAME)
-COMPILE_STR = ("gfortran", "-O2", "-g", "-pg", "-Wall", "-Wextra", "-Werror",  
+COMPILE_STR = ("gfortran", "-O2", "-g", "", "-Wall", "-Wextra", "-Werror",  
 "-fdefault-real-8", "-fdefault-double-8",\
 "geometry.f90", "fields.f90", "IO.f90", "main.f90", "-o", "{0} >/dev/null".format(EXENAME))
 VALGRIND_RUN = ("valgrind", "--D1=32768,8,64", "--quiet", "--tool=cachegrind", \
- "--cachegrind-out-file=h2d_serial.trace", "./{0} >/dev/null".format(EXENAME),)
+ "--cachegrind-out-file=h2d_serial.trace", "./{0} 1>2 2>/dev/null".format(EXENAME),)
 VALGRIND_CHECK = "cg_annotate h2d_serial.trace | grep \",\" | grep -v \"cache\""
 
 
@@ -25,7 +25,7 @@ def estimate(optim=0, exe=EXENAME):
     cstr = list(COMPILE_STR)
 
 # initial cleaning
-    print('cleaning previous files')
+    #print('cleaning previous files')
     for modfiles in CLEAN_LIST:  
         compil_return = subprocess.run(["rm","-f", modfiles ], shell=False)
 
@@ -44,13 +44,13 @@ def estimate(optim=0, exe=EXENAME):
 
     
     #compilation
-    print("compilation")
+    #print("compilation")
     compil_return = subprocess.run(cstr, shell=True)
     rcode = compil_return.returncode
     if rcode != 0:
         print("compilation error, aborted")
         print(compil_return.stderr)
-        quit(1)
+        raise SystemError('compilation failed')
 
     print('memory cache verification')
     vgrun = ' '.join(VALGRIND_RUN)
@@ -138,19 +138,30 @@ def compress(fname):
                 ziph.write(os.path.join(root, curfile))
 
 if __name__ == "__main__":
-    bench_current = estimate(optim=0)
-    bench_optim = estimate(optim=1)
+    print("***********************************")
+    print("**** Benchmark initial version ****")
+    print("***********************************")
     bench_init = estimate(optim=2)
-    print("actual speedup : {0:.2f}".format(bench_current['execution_time']/bench_init['execution_time']))
-    print("optimal speedup : {0:.2f}".format(bench_optim['execution_time']/bench_init['execution_time']))
-    speedup_ratio = (bench_init['execution_time'] / bench_optim['execution_time'] )/10.
-    current_ratio = bench_init['execution_time'] / bench_current['execution_time']
-    print("points for speedup (/10): {0}".format(current_ratio/speedup_ratio))
+    print("***********************************")
+    print("**** Benchmark current version ****")
+    print("***********************************")
+    bench_current = estimate(optim=0)
+    try:
+        bench_optim = estimate(optim=1)
+    except SystemError:
+        bench_optim = None
 
-#total_cache_miss_ratio
-    cache_ratio = (bench_optim['cache']['total_cache_miss_ratio'] - bench_init['cache']['total_cache_miss_ratio'])/10.
-    points_cache_ratio = (bench_current['cache']['total_cache_miss_ratio'] - bench_optim['cache']['total_cache_miss_ratio'])/cache_ratio
-    print("points for optimization (/10): {0}".format(abs(points_cache_ratio)))
+    print("actual speedup : {0:.2f}".format(bench_init['execution_time']/bench_current['execution_time']))
+    if bench_optim is not None:
+        print("optimal speedup : {0:.2f}".format(bench_init['execution_time']/bench_optim['execution_time']))
+        speedup_ratio = (bench_init['execution_time'] / bench_optim['execution_time'] )/10.
+        current_ratio = bench_init['execution_time'] / bench_current['execution_time']
+        print("points for speedup (/10): {0}".format(current_ratio/speedup_ratio))
+
+    #total_cache_miss_ratio
+        cache_ratio = (bench_optim['cache']['total_cache_miss_ratio'] - bench_init['cache']['total_cache_miss_ratio'])/10.
+        points_cache_ratio = (bench_current['cache']['total_cache_miss_ratio'] - bench_optim['cache']['total_cache_miss_ratio'])/cache_ratio
+        print("points for optimization (/10): {0}".format(abs(points_cache_ratio)))
 
     summary_dict = {'initial': bench_init, 'current': bench_current, 'optim': bench_optim}
 
