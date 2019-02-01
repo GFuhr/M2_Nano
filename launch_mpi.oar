@@ -1,6 +1,6 @@
 #!/bin/sh
 #OAR -n nano_nom
-#OAR -l node=1,walltime=00:10:00
+#OAR -l nodes=1,walltime=00:10:00
 #OAR -O %jobid%.output
 #OAR -E %jobid%.error
 
@@ -9,5 +9,5 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MPI_LIBS
 export PATH=/Softs/openmpi/1.6.5/gcc/bin:$PATH
 
 cd /homeuser/M2nano/nom_a_remplacer/
-
-mpiexec -n main.exe
+# -n : nombre de coeurs à utiliser
+mpiexec -n 4 main.exe
